@@ -1,0 +1,436 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  ADMIN
+  CAMPAIGN_CREATOR
+  LENDER
+  BORROWER
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum CampaignCategory {
+  TECHNOLOGY
+  CREATIVE
+  COMMUNITY
+  EDUCATION
+  HEALTHCARE
+  ENVIRONMENT
+  BUSINESS
+  SOCIAL
+  OTHER
+}
+
+enum LoanStatus {
+  REQUESTED
+  FUNDED
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  REJECTED
+}
+
+enum LoanRepaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  DEFAULTED
+}
+
+enum TransactionType {
+  DONATION
+  LOAN_FUNDING
+  LOAN_REPAYMENT
+  REFUND
+  WITHDRAWAL
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ============================================================================
+// USERS & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  password          String
+  firstName         String
+  lastName          String
+  phone             String?
+  avatar            String?
+  bio               String?
+  roles             UserRole[]
+  
+  // Address
+  address           String?
+  city              String?
+  country           String?
+  postalCode        String?
+  
+  // Account verification
+  emailVerified     Boolean   @default(false)
+  emailVerificationToken String?
+  emailVerificationExpiry DateTime?
+  
+  // KYC/Profile completeness
+  kycVerified       Boolean   @default(false)
+  kycDocuments      String?
+  
+  // Financial
+  creditScore       Int       @default(600) // Simulated credit score
+  walletBalance     Float     @default(0)
+  
+  // Permissions
+  isActive          Boolean   @default(true)
+  isBlocked         Boolean   @default(false)
+  blockedReason     String?
+  
+  // Relations
+  campaigns         Campaign[]
+  donations         Donation[]
+  loans             Loan[]
+  loanFundings      LoanFunding[]
+  comments          Comment[]
+  transactions      Transaction[]
+  adminActions      AdminAuditLog[]
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLogin         DateTime?
+  
+  // Indexes
+  @@index([email])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// CAMPAIGNS (Crowdfunding)
+// ============================================================================
+
+model Campaign {
+  id                String    @id @default(cuid())
+  title             String
+  description       String    @db.Text
+  category          CampaignCategory
+  status            CampaignStatus  @default(DRAFT)
+  
+  // Financial details
+  goalAmount        Float
+  raisedAmount      Float     @default(0)
+  currentAmount     Float     @default(0)
+  
+  // Tracking
+  totalDonors       Int       @default(0)
+  progressPercentage Float   @default(0)
+  
+  // Images & Media
+  thumbnailUrl      String?
+  imageUrls         String[]
+  
+  // Timeline
+  startDate         DateTime
+  endDate           DateTime
+  
+  // Creator
+  creatorId         String
+  creator           User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  donations         Donation[]
+  updates           CampaignUpdate[]
+  comments          Comment[]
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Indexes
+  @@index([creatorId])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@index([endDate])
+}
+
+model CampaignUpdate {
+  id                String    @id @default(cuid())
+  title             String
+  content           String    @db.Text
+  imageUrl          String?
+  
+  campaignId        String
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([campaignId])
+}
+
+// ============================================================================
+// DONATIONS
+// ============================================================================
+
+model Donation {
+  id                String    @id @default(cuid())
+  amount            Float
+  
+  // Payment
+  stripeTxId        String?   @unique
+  paymentMethod     String    @default("stripe")
+  
+  // Relations
+  donorId           String
+  donor             User      @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  
+  campaignId        String
+  campaign          Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  // Tracking
+  isAnonymous       Boolean   @default(false)
+  message           String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([donorId])
+  @@index([campaignId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// P2P LENDING
+// ============================================================================
+
+model Loan {
+  id                String    @id @default(cuid())
+  title             String
+  description       String    @db.Text
+  
+  // Loan parameters
+  requestedAmount   Float
+  fundedAmount      Float     @default(0)
+  interestRate      Float     // Annual interest rate in percentage
+  duration          Int       // Duration in months
+  purpose           String
+  
+  // Status
+  status            LoanStatus @default(REQUESTED)
+  
+  // Collateral / Documents
+  documents         String[]
+  
+  // Borrower
+  borrowerId        String
+  borrower          User      @relation(fields: [borrowerId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  fundings          LoanFunding[]
+  repayments        LoanRepayment[]
+  comments          Comment[]
+  
+  // Approval
+  approvedAt        DateTime?
+  approvedBy        String?
+  
+  // Timeline
+  startDate         DateTime?
+  expectedEndDate   DateTime?
+  
+  // Tracking
+  defaulted         Boolean   @default(false)
+  defaultedAt       DateTime?
+  defaultReason     String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([borrowerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model LoanFunding {
+  id                String    @id @default(cuid())
+  amount            Float
+  
+  // Lender
+  lenderId          String
+  lender            User      @relation(fields: [lenderId], references: [id], onDelete: Cascade)
+  
+  // Loan
+  loanId            String
+  loan              Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  
+  // Payment
+  stripeTxId        String?   @unique
+  
+  createdAt         DateTime  @default(now())
+  
+  @@index([lenderId])
+  @@index([loanId])
+}
+
+model LoanRepayment {
+  id                String    @id @default(cuid())
+  emiNumber         Int       // EMI schedule number
+  dueDate           DateTime
+  
+  // Amount breakdown
+  principal         Float
+  interest          Float
+  totalAmount       Float
+  
+  // Payment
+  paidAmount        Float     @default(0)
+  status            LoanRepaymentStatus @default(PENDING)
+  
+  // Payment reference
+  stripeTxId        String?   @unique
+  paidAt            DateTime?
+  
+  // Loan reference
+  loanId            String
+  loan              Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([loanId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+// ============================================================================
+// COMMENTS & INTERACTIONS
+// ============================================================================
+
+model Comment {
+  id                String    @id @default(cuid())
+  content           String    @db.Text
+  
+  // Author
+  authorId          String
+  author            User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  // Polymorphic - either campaign or loan
+  campaignId        String?
+  campaign          Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  loanId            String?
+  loan              Loan?     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([authorId])
+  @@index([campaignId])
+  @@index([loanId])
+}
+
+// ============================================================================
+// TRANSACTIONS & AUDIT
+// ============================================================================
+
+model Transaction {
+  id                String    @id @default(cuid())
+  type              TransactionType
+  status            TransactionStatus @default(PENDING)
+  
+  amount            Float
+  currency          String    @default("USD")
+  
+  // User
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // References (flexible for different transaction types)
+  referenceId       String?   // Campaign/Loan/Donation ID
+  referenceType     String?   // "campaign", "loan", "donation"
+  
+  // Payment gateway
+  stripeTxId        String?   @unique
+  metadata          String?   @db.Text // JSON metadata
+  
+  description       String?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ADMIN
+// ============================================================================
+
+model AdminAuditLog {
+  id                String    @id @default(cuid())
+  action            String
+  
+  adminId           String
+  admin             User      @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  
+  // What was changed
+  entityType        String    // "campaign", "loan", "user"
+  entityId          String
+  
+  // Details
+  changes           String    @db.Text // JSON
+  reason            String?
+  
+  createdAt         DateTime  @default(now())
+  
+  @@index([adminId])
+  @@index([entityType])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ANALYTICS & PLATFORM STATS
+// ============================================================================
+
+model PlatformStats {
+  id                String    @id @default(cuid())
+  
+  totalFundsRaised  Float     @default(0)
+  totalLoansActive  Int       @default(0)
+  totalUsers        Int       @default(0)
+  totalCampaigns    Int       @default(0)
+  defaultRate       Float     @default(0)
+  
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([updatedAt])
+}
