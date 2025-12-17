@@ -65,3 +65,5 @@ pnpm-lock.yaml
 # Testing
 .mocha
 .jest
+
+IMPLEMENTATION_SUMMARY.md

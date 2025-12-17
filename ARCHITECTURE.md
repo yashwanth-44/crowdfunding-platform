@@ -447,4 +447,4 @@ v1.1 ─→ 100% traffic
 
 ---
 
-For production deployment with these patterns, refer to the main README.md file.
+For production deployment with these patterns, refer to the main README.md file. 
