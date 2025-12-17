@@ -2,7 +2,7 @@
 
 A production-ready, scalable fintech platform built with MERN stack, PostgreSQL, Docker, and cloud-ready architecture.
 
-## able of Contents
+## Table of Contents
 
 - [Features](#features)
 - [Tech Stack](#tech-stack)
